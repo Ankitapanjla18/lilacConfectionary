@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2, ShoppingCart, Receipt, Package } from 'lucide-react';
 import logoImage from './assets/logo.jpg';
 import qrImage from './assets/lilac_ig.jpg';
@@ -40,10 +40,11 @@ const BakeryCalculator = () => {
 
 
   const addItem = () => {
-    if (currentItem.name && currentItem.sellingPrice && currentItem.quantity > 0) {
+    const quantityNum = typeof currentItem.quantity === 'string' ? parseInt(currentItem.quantity) : currentItem.quantity;
+    if (currentItem.name && currentItem.sellingPrice && quantityNum > 0) {
       const costPrice = parseFloat(currentItem.costPrice) || 0;
       const sellingPrice = parseFloat(currentItem.sellingPrice);
-      const quantity = parseInt(currentItem.quantity);
+      const quantity = quantityNum;
       
       setItems([...items, { 
         ...currentItem,
