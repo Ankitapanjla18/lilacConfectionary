@@ -2,8 +2,6 @@ import { useState, useRef } from 'react';
 import { Plus, Trash2, ShoppingCart, Receipt, Package, Share2 } from 'lucide-react';
 import logoImage from './assets/logo.jpg';
 import qrImage from './assets/lilac_ig.jpg';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 interface Item {
   id: number;
@@ -95,8 +93,14 @@ const BakeryCalculator = () => {
     if (!billRef.current) return;
 
     try {
+      // Dynamically import PDF libraries to reduce initial bundle size
+      const [html2canvas, jsPDF] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
+
       // Capture the bill as canvas with optimized settings
-      const canvas = await html2canvas(billRef.current, {
+      const canvas = await html2canvas.default(billRef.current, {
         scale: 1.5, // Reduced scale for better single-page fit
         useCORS: true,
         logging: false,
@@ -127,7 +131,7 @@ const BakeryCalculator = () => {
       }
       
       // Create PDF
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdf = new jsPDF.default('p', 'mm', 'a4');
       
       // Center the content on the page
       const xOffset = (pdfWidth - finalWidth) / 2;
@@ -167,8 +171,14 @@ const BakeryCalculator = () => {
     if (!billRef.current) return null;
 
     try {
+      // Dynamically import PDF libraries to reduce initial bundle size
+      const [html2canvas, jsPDF] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
+
       // Capture the bill as canvas with optimized settings
-      const canvas = await html2canvas(billRef.current, {
+      const canvas = await html2canvas.default(billRef.current, {
         scale: 1.5,
         useCORS: true,
         logging: false,
@@ -196,7 +206,7 @@ const BakeryCalculator = () => {
         finalWidth = contentHeight * ratio;
       }
       
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdf = new jsPDF.default('p', 'mm', 'a4');
       const xOffset = (pdfWidth - finalWidth) / 2;
       const yOffset = (pdfHeight - finalHeight) / 2;
       
@@ -220,7 +230,7 @@ const BakeryCalculator = () => {
 
   const sharePDF = async () => {
     // Check if Web Share API is available (mobile browsers)
-    if (navigator.share && navigator.canShare) {
+    if (typeof navigator !== 'undefined' && 'share' in navigator && 'canShare' in navigator) {
       try {
         const pdfBlob = await generatePDFBlob();
         if (!pdfBlob) {
@@ -684,7 +694,7 @@ const BakeryCalculator = () => {
               Download PDF
             </button>
             {/* Show Share button when Web Share API is available (primarily mobile) */}
-            {typeof navigator !== 'undefined' && navigator.share && (
+            {typeof navigator !== 'undefined' && 'share' in navigator && (
               <button
                 onClick={sharePDF}
                 className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base flex items-center justify-center"
