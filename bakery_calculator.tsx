@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Plus, Trash2, ShoppingCart, Receipt, Package } from 'lucide-react';
+import { Plus, Trash2, ShoppingCart, Receipt, Package, Share2 } from 'lucide-react';
 import logoImage from './assets/logo.jpg';
 import qrImage from './assets/lilac_ig.jpg';
 import html2canvas from 'html2canvas';
@@ -95,38 +95,53 @@ const BakeryCalculator = () => {
     if (!billRef.current) return;
 
     try {
-      // Capture the bill as canvas
+      // Capture the bill as canvas with optimized settings
       const canvas = await html2canvas(billRef.current, {
-        scale: 2,
+        scale: 1.5, // Reduced scale for better single-page fit
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
+        windowWidth: billRef.current.scrollWidth,
+        windowHeight: billRef.current.scrollHeight,
       });
 
-      // Calculate PDF dimensions
-      const imgWidth = 210; // A4 width in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      // A4 dimensions in mm
+      const pdfWidth = 210; // A4 width in mm
+      const pdfHeight = 297; // A4 height in mm
+      const margin = 5; // Margin in mm
+      const contentWidth = pdfWidth - (margin * 2);
+      const contentHeight = pdfHeight - (margin * 2);
+      
+      // Calculate dimensions to fit on single page
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = imgWidth / imgHeight;
+      
+      let finalWidth = contentWidth;
+      let finalHeight = contentWidth / ratio;
+      
+      // If height exceeds page, scale down to fit
+      if (finalHeight > contentHeight) {
+        finalHeight = contentHeight;
+        finalWidth = contentHeight * ratio;
+      }
       
       // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
       
-      // If content is taller than one page, split it
-      let heightLeft = imgHeight;
-      let position = 0;
+      // Center the content on the page
+      const xOffset = (pdfWidth - finalWidth) / 2;
+      const yOffset = (pdfHeight - finalHeight) / 2;
       
-      // Add first page
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, imgHeight);
-      heightLeft -= pdfHeight;
-      
-      // Add additional pages if needed
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, pdfWidth, imgHeight);
-        heightLeft -= pdfHeight;
-      }
+      // Add image to PDF, scaled to fit on single page
+      pdf.addImage(
+        canvas.toDataURL('image/png', 0.95), 
+        'PNG', 
+        xOffset, 
+        yOffset, 
+        finalWidth, 
+        finalHeight
+      );
       
       // Generate filename with customer name, date, and bill number
       const billNumber = `INV-${Date.now().toString().slice(-6)}`;
@@ -145,6 +160,108 @@ const BakeryCalculator = () => {
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('Failed to generate PDF. Please try again.');
+    }
+  };
+
+  const generatePDFBlob = async (): Promise<Blob | null> => {
+    if (!billRef.current) return null;
+
+    try {
+      // Capture the bill as canvas with optimized settings
+      const canvas = await html2canvas(billRef.current, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: billRef.current.scrollWidth,
+        windowHeight: billRef.current.scrollHeight,
+      });
+
+      // A4 dimensions in mm
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const margin = 5;
+      const contentWidth = pdfWidth - (margin * 2);
+      const contentHeight = pdfHeight - (margin * 2);
+      
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = imgWidth / imgHeight;
+      
+      let finalWidth = contentWidth;
+      let finalHeight = contentWidth / ratio;
+      
+      if (finalHeight > contentHeight) {
+        finalHeight = contentHeight;
+        finalWidth = contentHeight * ratio;
+      }
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const xOffset = (pdfWidth - finalWidth) / 2;
+      const yOffset = (pdfHeight - finalHeight) / 2;
+      
+      pdf.addImage(
+        canvas.toDataURL('image/png', 0.95), 
+        'PNG', 
+        xOffset, 
+        yOffset, 
+        finalWidth, 
+        finalHeight
+      );
+      
+      // Convert PDF to blob
+      const pdfBlob = pdf.output('blob');
+      return pdfBlob;
+    } catch (error) {
+      console.error('Error generating PDF blob:', error);
+      return null;
+    }
+  };
+
+  const sharePDF = async () => {
+    // Check if Web Share API is available (mobile browsers)
+    if (navigator.share && navigator.canShare) {
+      try {
+        const pdfBlob = await generatePDFBlob();
+        if (!pdfBlob) {
+          alert('Failed to generate PDF. Please try again.');
+          return;
+        }
+
+        const billNumber = `INV-${Date.now().toString().slice(-6)}`;
+        const customerNameForFile = customerName.trim() || 'Customer';
+        const sanitizedCustomerName = customerNameForFile
+          .replace(/[^a-zA-Z0-9\s-_]/g, '')
+          .replace(/\s+/g, '_')
+          .substring(0, 50);
+        const dateStr = new Date().toISOString().split('T')[0];
+        const fileName = `Bill_${sanitizedCustomerName}_${dateStr}_${billNumber}.pdf`;
+
+        // Create a File object for sharing
+        const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+        // Share the file
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: `Bill - ${customerNameForFile}`,
+            text: `Bill from The Lilac Confectionery - ${dateStr}`,
+            files: [file],
+          });
+        } else {
+          // Fallback: download if sharing files not supported
+          downloadPDF();
+        }
+      } catch (error: any) {
+        // If user cancels sharing, do nothing
+        if (error.name !== 'AbortError') {
+          console.error('Error sharing PDF:', error);
+          // Fallback to download
+          downloadPDF();
+        }
+      }
+    } else {
+      // Fallback: download if Web Share API not available
+      downloadPDF();
     }
   };
 
@@ -460,7 +577,8 @@ const BakeryCalculator = () => {
             </div>
           </div>
         ) : (
-          <div ref={billRef} className="bg-white rounded-2xl shadow-2xl p-8 max-w-2xl mx-auto border-2 border-purple-200">
+          <>
+          <div ref={billRef} className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 md:p-8 max-w-2xl mx-auto border-2 border-purple-200">
             <div className="text-center mb-6 pb-6 border-b-2 border-dashed border-purple-300">
               <div className="flex justify-center mb-4">
                 <img 
@@ -555,33 +673,44 @@ const BakeryCalculator = () => {
               <p className="text-xs sm:text-sm text-purple-600 mt-2">Thank you for your purchase!</p>
               <p className="text-xs sm:text-sm text-purple-600">Have a sweet day! 🧁</p>
             </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 sm:mt-6">
-              <button
-                onClick={downloadPDF}
-                className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base"
-              >
-                Download PDF
-              </button>
-              <button
-                onClick={() => {
-                  setShowBill(false);
-                  setItems([]);
-                  setCustomerName('');
-                  setCustomerSource('walk-in');
-                  setReferralText('');
-                  setDelivery(false);
-                  setDeliveryCharge('');
-                  setDeliveryMode('');
-                  setDiscountType('value');
-                  setDiscountAmount('');
-                }}
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base"
-              >
-                New Order
-              </button>
-            </div>
           </div>
+
+          {/* Buttons outside billRef so they're not included in PDF */}
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 sm:mt-6 max-w-2xl mx-auto">
+            <button
+              onClick={downloadPDF}
+              className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base flex items-center justify-center"
+            >
+              Download PDF
+            </button>
+            {/* Show Share button when Web Share API is available (primarily mobile) */}
+            {typeof navigator !== 'undefined' && navigator.share && (
+              <button
+                onClick={sharePDF}
+                className="flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base flex items-center justify-center"
+              >
+                <Share2 className="mr-2" size={18} /> Share PDF
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setShowBill(false);
+                setItems([]);
+                setCustomerName('');
+                setCustomerSource('walk-in');
+                setReferralText('');
+                setDelivery(false);
+                setDeliveryCharge('');
+                setDeliveryMode('');
+                setDiscountType('value');
+                setDiscountAmount('');
+              }}
+              className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold py-2.5 sm:py-3 rounded-lg transition-all text-sm sm:text-base"
+            >
+              New Order
+            </button>
+          </div>
+          </>
         )}
       </div>
     </div>
